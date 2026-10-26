@@ -201,7 +201,7 @@ export function App() {
   const [sidebarStyle, setSidebarStyle] = useState<SidebarStyle>('light')
   const [language, setLanguage] = useState('AZ')
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-
+  console.log(isDesktop)
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 992px)')
     const closeMobileNavigation = () => {
