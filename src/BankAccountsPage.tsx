@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent as ReactDragEvent } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -26,6 +26,8 @@ import {
   ProjectOutlined,
   ProfileOutlined,
   PlusOutlined,
+  PaperClipOutlined,
+  QuestionCircleOutlined,
   SaveOutlined,
   SearchOutlined,
   SettingOutlined,
@@ -53,11 +55,15 @@ import {
   Input,
   InputNumber,
   Pagination,
+  Popconfirm,
+  Radio,
   Row,
   Col,
+  Progress,
   Select,
   Segmented,
   Space,
+  Statistic,
   Tag,
   Table,
   Tooltip,
@@ -68,8 +74,10 @@ import {
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import type { UploadProps } from 'antd'
+import type { UploadFile, UploadProps } from 'antd'
 import type { FormInstance } from 'antd'
+import type { FormListFieldData } from 'antd/es/form'
+import excelLogo from '../logo/Microsoft_Excel-Logo.wine.png'
 
 const { Text, Title } = Typography
 
@@ -92,6 +100,11 @@ interface PaymentFormValues {
   rate?: number
   vatRate?: number
   vatAmount?: number
+  vatIncluded?: boolean
+  netAmount?: number
+  totalAmount?: number
+  multipleDocuments?: boolean
+  attachments?: UploadFile[]
   amountInCurrency?: number
   amount?: number
   contract?: string
@@ -117,6 +130,8 @@ interface DistributionRowForm {
   date?: string
   debt?: number
   payment?: number
+  debtVat?: number
+  vatPayment?: number
   selected?: boolean
 }
 
@@ -315,10 +330,12 @@ const workspaceTitles: Record<BankWorkspace, string> = {
   conversion: 'Currency Conversion',
 }
 
+const currencyOptions = [{ value: 'AZN', label: 'AZN — Azərbaycan manatı' }, { value: 'USD', label: 'USD — ABŞ dolları' }, { value: 'EUR', label: 'EUR — Avro' }]
+
 function PaymentField({ field }: { field: FormField }) {
   const placeholder = field.name === 'sequenceNumber' ? 'Avtomatik yaradılacaq' : `${field.label} seçin və ya daxil edin`
   return <Col xs={24} md={field.kind === 'textarea' ? 24 : 12}><Form.Item name={field.name} label={field.label} rules={field.required ? [{ required: true, message: `${field.label} daxil edilməlidir` }] : undefined}>
-          {field.kind === 'date' ? <DatePicker className="full-width" format="DD.MM.YYYY" placeholder="Tarixi seçin" /> : field.kind === 'amount' ? <InputNumber className="full-width" min={0} precision={2} placeholder="0.00" /> : field.kind === 'select' ? <Select placeholder={placeholder} options={field.name === 'currency' ? [{ value: 'AZN', label: 'AZN — Azərbaycan manatı' }, { value: 'USD', label: 'USD — ABŞ dolları' }, { value: 'EUR', label: 'EUR — Avro' }] : paymentTypeOptions} /> : field.kind === 'textarea' ? <Input.TextArea rows={3} placeholder="Əlavə qeyd daxil edin" /> : field.required ? <Input placeholder={placeholder} /> : <AutoComplete className="full-width" placeholder={placeholder} options={[]} />}
+          {field.kind === 'date' ? <DatePicker className="full-width" format="DD.MM.YYYY" placeholder="Tarixi seçin" /> : field.kind === 'amount' ? <InputNumber className="full-width" min={0} precision={2} placeholder="0.00" /> : field.kind === 'select' ? <Select placeholder={placeholder} options={field.name === 'currency' ? currencyOptions : paymentTypeOptions} /> : field.kind === 'textarea' ? <Input.TextArea rows={3} placeholder="Əlavə qeyd daxil edin" /> : field.required ? <Input placeholder={placeholder} /> : <AutoComplete className="full-width" placeholder={placeholder} options={[]} />}
   </Form.Item></Col>
 }
 
@@ -335,8 +352,12 @@ function DistributionValue({ value, icon, tone = 'default' }: { value: number; i
   return <div className={`bank-distribution-value bank-distribution-value-${tone}`} aria-label={`${value.toLocaleString('az-AZ', { minimumFractionDigits: 2 })} AZN`}><span className="bank-distribution-value-icon">{icon}</span><Text strong>{value.toLocaleString('az-AZ', { minimumFractionDigits: 2 })}</Text><Text type="secondary">AZN</Text></div>
 }
 
-function DistributionSummaryItem({ label, value, icon, tone = 'default' }: { label: string; value: number; icon: ReactNode; tone?: 'default' | 'success' | 'warning' }) {
-  return <div className={`bank-distribution-summary-item bank-distribution-summary-item-${tone}`}><span className="bank-distribution-summary-icon">{icon}</span><Flex vertical gap={2}><Text type="secondary">{label}</Text><Text strong>{value.toLocaleString('az-AZ', { minimumFractionDigits: 2 })} AZN</Text></Flex></div>
+type AmountDetail = { label: string; value: number }
+
+const formatAmount = (value: number) => value.toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function DistributionSummaryItem({ label, value, icon, tone = 'default', currency = 'AZN', details, percent }: { label: string; value: number; icon: ReactNode; tone?: 'default' | 'success' | 'warning'; currency?: string; details?: AmountDetail[]; percent?: number }) {
+  return <Card size="small" className={`bank-distribution-summary-item bank-distribution-summary-item-${tone}`}><Flex gap={12} align="flex-start"><span className="bank-distribution-summary-icon">{icon}</span><Flex vertical gap={4} className="bank-distribution-summary-content"><Statistic title={label} value={value} formatter={(amount) => `${formatAmount(Number(amount))} ${currency}`} className="bank-distribution-summary-statistic" />{percent !== undefined && <Progress percent={percent} size="small" showInfo={false} className="bank-distribution-summary-progress" aria-label={`${label}: ${percent}%`} />}{details && <Flex vertical className="bank-distribution-summary-details">{details.map((detail) => <Text key={detail.label} type="secondary">{detail.label}: {formatAmount(detail.value)} {currency}</Text>)}</Flex>}</Flex></Flex></Card>
 }
 
 const inboundPayers = [
@@ -364,7 +385,7 @@ const supplierRefundReturnDocuments = [
 
 const initialDistributionRows = (type: InboundType, refundType?: string): DistributionRowForm[] => type === 'supplierRefund'
   ? (refundType === 'goods-service-return' ? supplierRefundReturnDocuments : supplierRefundOpenPayments).map((payment) => ({ invoice: payment.value, date: payment.date, debt: payment.debt, payment: 0, selected: true }))
-  : [{}]
+  : [{ payment: 0, vatPayment: 0 }]
 
 const inboundAccounts = [
   { value: 'AZ21NABZ00000000000000123450', label: 'AZ21NABZ00000000000000123450 · Kapital Bank ASC · AZN', bank: 'Kapital Bank ASC', currency: 'AZN' },
@@ -386,15 +407,258 @@ const inboundContracts = [
 ]
 
 const inboundInvoices = [
-  { value: 'invoice-001', label: 'HF-009814 · 10 000,00 AZN', contract: 'contract-001', debt: 10000 },
-  { value: 'invoice-002', label: 'HF-009815 · 8 000,00 AZN', contract: 'contract-001', debt: 8000 },
-  { value: 'invoice-003', label: 'HF-009816 · 6 500,00 AZN', contract: 'contract-002', debt: 6500 },
-  { value: 'invoice-004', label: 'HF-009817 · 4 200,00 AZN', contract: 'contract-003', debt: 4200 },
+  { value: 'invoice-001', label: 'HF-009814 · 10 000,00 AZN', contract: 'contract-001', debt: 10000, debtVat: 1800 },
+  { value: 'invoice-002', label: 'HF-009815 · 8 000,00 AZN', contract: 'contract-001', debt: 8000, debtVat: 1440 },
+  { value: 'invoice-003', label: 'HF-009816 · 6 500,00 AZN', contract: 'contract-002', debt: 6500, debtVat: 1170 },
+  { value: 'invoice-004', label: 'HF-009817 · 4 200,00 AZN', contract: 'contract-003', debt: 4200, debtVat: 756 },
 ]
+
+const roundPayment = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+
+function PaymentSummary({ principal, vat, distributedPrincipal, distributedVat, currency, showProgress = true }: { principal: number; vat: number; distributedPrincipal: number; distributedVat: number; currency: string; showProgress?: boolean }) {
+  const advancePrincipal = Math.max(0, roundPayment(principal - distributedPrincipal))
+  const advanceVat = Math.max(0, roundPayment(vat - distributedVat))
+  const total = roundPayment(principal + vat)
+  const distributed = roundPayment(distributedPrincipal + distributedVat)
+  const advance = roundPayment(advancePrincipal + advanceVat)
+  const percentOf = (value: number) => (total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0)
+  return <Row gutter={[12, 12]} className="bank-distribution-summary">
+    <Col xs={24} sm={showProgress ? 8 : 12} xl={8}><DistributionSummaryItem label="Ümumi ödəniş" value={total} icon={<DollarOutlined />} currency={currency} percent={showProgress ? (total > 0 ? 100 : 0) : undefined} details={[{ label: 'Əsas məbləğ', value: principal }, { label: 'ƏDV', value: vat }]} /></Col>
+    <Col xs={24} sm={showProgress ? 8 : 12} xl={8}><DistributionSummaryItem label="Bölüşdürülən" value={distributed} icon={<SwapOutlined />} tone="success" currency={currency} percent={showProgress ? percentOf(distributed) : undefined} details={[{ label: 'Əsas məbləğ', value: distributedPrincipal }, { label: 'ƏDV', value: distributedVat }]} /></Col>
+    <Col xs={24} sm={showProgress ? 8 : 12} xl={8}><DistributionSummaryItem label="Avans ödənişi" value={advance} icon={<WalletOutlined />} tone="warning" currency={currency} percent={showProgress ? percentOf(advance) : undefined} details={[{ label: 'Əsas məbləğ', value: advancePrincipal }, { label: 'ƏDV', value: advanceVat }]} /></Col>
+  </Row>
+}
+
+function invoiceRowValues(invoiceValue: string, otherRows: DistributionRowForm[], currency: string, principal: number, vat: number): DistributionRowForm {
+  const invoice = inboundInvoices.find((item) => item.value === invoiceValue)
+  const otherPrincipal = otherRows.reduce((sum, row) => sum + Number(row.payment ?? 0), 0)
+  const otherVat = otherRows.reduce((sum, row) => sum + Number(row.vatPayment ?? 0), 0)
+  const rate = exchangeRatesByCurrency[currency] ?? 1
+  const debt = roundPayment(Number(invoice?.debt ?? 0) / rate)
+  const debtVat = roundPayment(Number(invoice?.debtVat ?? 0) / rate)
+  return { invoice: invoiceValue, debt, debtVat, payment: Math.max(0, Math.min(debt, roundPayment(principal - otherPrincipal))), vatPayment: Math.max(0, Math.min(debtVat, roundPayment(vat - otherVat))) }
+}
+
+function contractRowValues(contract: string, otherRows: DistributionRowForm[], currency: string, principal: number, vat: number): DistributionRowForm {
+  const cleared: DistributionRowForm = { contract, annex: undefined, invoice: undefined, debt: 0, debtVat: 0, payment: 0, vatPayment: 0 }
+  const openInvoices = inboundInvoices.filter((invoice) => invoice.contract === contract && !otherRows.some((row) => row.invoice === invoice.value))
+  return openInvoices.length === 1 ? { ...cleared, ...invoiceRowValues(openInvoices[0].value, otherRows, currency, principal, vat) } : cleared
+}
+
+function DistributionPanel({ open, children, panelRef }: { open: boolean; children: ReactNode; panelRef: React.RefObject<HTMLDivElement | null> }) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const initial = useRef(true)
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    const content = contentRef.current
+    if (!panel || !content) return
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let animation: Animation | undefined
+    let targetHeight = 0
+    let deadline = 0
+
+    const settle = () => {
+      animation?.cancel()
+      animation = undefined
+      panel.style.height = open ? 'auto' : '0px'
+      panel.style.opacity = open ? '1' : '0'
+    }
+    const animate = (duration: number) => {
+      const height = panel.getBoundingClientRect().height
+      const opacity = getComputedStyle(panel).opacity
+      animation?.cancel()
+      targetHeight = open ? content.getBoundingClientRect().height : 0
+      panel.style.height = `${targetHeight}px`
+      panel.style.opacity = open ? '1' : '0'
+      if (motion.matches || duration <= 0) {
+        settle()
+        return
+      }
+      deadline = performance.now() + duration
+      animation = panel.animate(
+        [{ height: `${height}px`, opacity }, { height: `${targetHeight}px`, opacity: open ? '1' : '0' }],
+        { duration, easing: 'ease-in-out' },
+      )
+      animation.onfinish = settle
+    }
+    if (initial.current) {
+      initial.current = false
+      settle()
+    } else {
+      animate(2000)
+    }
+    const observer = new ResizeObserver(() => {
+      if (open && animation && Math.abs(content.getBoundingClientRect().height - targetHeight) > 0.5) {
+        animate(Math.max(0, deadline - performance.now()))
+      }
+    })
+    observer.observe(content)
+    const onMotionChange = () => { if (motion.matches) settle() }
+    motion.addEventListener('change', onMotionChange)
+    return () => {
+      observer.disconnect()
+      motion.removeEventListener('change', onMotionChange)
+      // Commit the current visual state before a rapid reversal starts.
+      if (animation) {
+        panel.style.height = `${panel.getBoundingClientRect().height}px`
+        panel.style.opacity = getComputedStyle(panel).opacity
+        animation.cancel()
+      }
+    }
+  }, [open, panelRef])
+
+  return <div id="counterparty-distribution-panel" ref={panelRef} className="payment-distribution-panel" inert={!open} aria-hidden={!open}>
+    <div ref={contentRef} className="payment-distribution-panel-content">{children}</div>
+  </div>
+}
+
+function CounterpartyDocuments({ form, payer, currency, principal, vat }: { form: FormInstance<PaymentFormValues>; payer?: string; currency: string; principal: number; vat: number }) {
+  const rows: DistributionRowForm[] = Form.useWatch('distributionRows', { form, preserve: true }) ?? []
+  const firstInvoice = rows[0]?.invoice
+  const firstContract = rows[0]?.contract
+  const firstDebt = Number(rows[0]?.debt ?? 0)
+  const firstDebtVat = Number(rows[0]?.debtVat ?? 0)
+  const contracts = inboundContracts.filter((contract) => !payer || contract.payer === payer)
+  const soleContract = contracts.length === 1 ? contracts[0].value : undefined
+  const otherRowsOf = (index: number) => ((form.getFieldValue('distributionRows') ?? []) as DistributionRowForm[]).filter((_, rowIndex) => rowIndex !== index)
+  const distributedPrincipal = roundPayment(rows.reduce((sum, row) => sum + Number(row.payment ?? 0), 0))
+  const distributedVat = roundPayment(rows.reduce((sum, row) => sum + Number(row.vatPayment ?? 0), 0))
+  const firstPayment = Number(rows[0]?.payment ?? 0)
+  const firstVatPayment = Number(rows[0]?.vatPayment ?? 0)
+  const remainingPrincipal = Math.max(0, roundPayment(firstDebt - firstPayment))
+  const remainingVat = Math.max(0, roundPayment(firstDebtVat - firstVatPayment))
+  const multiple = Boolean(Form.useWatch('multipleDocuments', { form, preserve: true }))
+  const previousMultiple = useRef(multiple)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const switchRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const modeChanged = previousMultiple.current !== multiple
+    previousMultiple.current = multiple
+    if (multiple || modeChanged) return
+    form.setFieldValue(['distributionRows', 0, 'payment'], firstInvoice ? Math.min(firstDebt, principal) : 0)
+    form.setFieldValue(['distributionRows', 0, 'vatPayment'], firstInvoice ? Math.min(firstDebtVat, vat) : 0)
+  }, [firstDebt, firstDebtVat, firstInvoice, form, multiple, principal, vat])
+
+  useEffect(() => {
+    if (!payer || !soleContract || firstContract) return
+    form.setFieldValue(['distributionRows', 0], { ...form.getFieldValue(['distributionRows', 0]), ...contractRowValues(soleContract, [], currency, principal, vat) })
+  }, [currency, firstContract, form, payer, principal, soleContract, vat])
+
+  const contractField = (index: number, label?: string, mirror = false) => <Form.Item name={mirror ? undefined : [index, 'contract']} label={label} rules={mirror ? undefined : [{ required: true, message: 'Müqavilə seçin' }]}><Select value={mirror ? rows[index]?.contract : undefined} aria-label={`${index + 1}-ci sənədin müqaviləsi`} showSearch optionFilterProp="label" placeholder="Müqavilə seçin" options={contracts} onChange={(value: string) => {
+    const current: DistributionRowForm = form.getFieldValue(['distributionRows', index]) ?? {}
+    form.setFieldValue(['distributionRows', index], { ...current, ...contractRowValues(value, otherRowsOf(index), currency, principal, vat) })
+  }} /></Form.Item>
+  const annexField = (index: number, label?: string, mirror = false) => <Form.Item name={mirror ? undefined : [index, 'annex']} label={label}><Select value={mirror ? rows[index]?.annex : undefined} onChange={mirror ? (value) => form.setFieldValue(['distributionRows', index, 'annex'], value) : undefined} aria-label={`${index + 1}-ci sənədin əlavəsi`} allowClear placeholder="Əlavə seçin" options={[{ value: 'annex-001', label: 'ƏL-001' }, { value: 'annex-002', label: 'ƏL-002' }]} /></Form.Item>
+  const invoiceField = (index: number, label?: string, mirror = false) => <Form.Item name={mirror ? undefined : [index, 'invoice']} label={label} rules={mirror ? undefined : [{ required: true, message: 'Hesab-faktura seçin' }]}><Select value={mirror ? rows[index]?.invoice : undefined} aria-label={`${index + 1}-ci sənədin hesab-fakturası`} showSearch optionFilterProp="label" placeholder="Hesab-faktura seçin" options={inboundInvoices.filter((invoice) => invoice.contract === rows[index]?.contract && !rows.some((row, rowIndex) => rowIndex !== index && row.invoice === invoice.value))} onChange={(value: string) => {
+    const current: DistributionRowForm = form.getFieldValue(['distributionRows', index]) ?? {}
+    form.setFieldValue(['distributionRows', index], { ...current, ...invoiceRowValues(value, otherRowsOf(index), currency, principal, vat) })
+  }} /></Form.Item>
+  const paymentField = (index: number, name: 'payment' | 'vatPayment') => <Form.Item name={multiple ? [index, name] : undefined} rules={multiple ? [
+    { required: true, message: 'Məbləği daxil edin' },
+    { type: 'number', min: 0, message: 'Məbləğ mənfi ola bilməz' },
+    { validator: (_, value: number) => {
+      const debt = Number(name === 'payment' ? rows[index]?.debt : rows[index]?.debtVat) || 0
+      if (value > debt) return Promise.reject(new Error('Sənəd üzrə borcu keçə bilməz'))
+      const currentRows: DistributionRowForm[] = form.getFieldValue('distributionRows') ?? []
+      const allocated = roundPayment(currentRows.reduce((sum, row) => sum + Number(row[name] ?? 0), 0))
+      if (allocated > (name === 'payment' ? principal : vat)) return Promise.reject(new Error('Ödəniş məbləğini keçə bilməz'))
+      return Promise.resolve()
+    } },
+  ] : undefined}><InputNumber value={multiple ? undefined : rows[index]?.[name]} className="full-width" aria-label={`${index + 1}-ci sənəd üzrə ${name === 'payment' ? 'əsas ödəniş' : 'ƏDV ödənişi'}`} min={0} precision={2} placeholder="0.00" /></Form.Item>
+  const money = (value: number) => roundPayment(value).toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const summary = <PaymentSummary principal={principal} vat={vat} distributedPrincipal={distributedPrincipal} distributedVat={distributedVat} currency={currency} showProgress={false} />
+  const documentBalance = (title: string, principalValue: number, vatValue: number, kind: 'debt' | 'remaining') => <Card size="small" className={`bank-document-balance bank-document-balance-${kind}`}>
+    <Text strong className="bank-document-balance-title">{title}</Text>
+    <Row gutter={[8, 8]}>
+      <Col span={12}><Flex vertical align="center"><Text type="secondary">Əsas məbləğ</Text><Text strong>{money(principalValue)} {currency}</Text></Flex></Col>
+      <Col span={12}><Flex vertical align="center"><Text type="secondary">ƏDV</Text><Text strong>{money(vatValue)} {currency}</Text></Flex></Col>
+    </Row>
+  </Card>
+
+  return <Flex vertical gap={16}>
+  <Form.List name="distributionRows" rules={[{ validator: (_, value: DistributionRowForm[] | undefined) => value?.length ? Promise.resolve() : Promise.reject(new Error('Ən azı bir sənəd əlavə edin')) }]}>
+    {(fields, { add, remove }, { errors }) => <Flex vertical gap={16}>
+      {fields.map((field) => <Flex key={field.key} hidden><Form.Item name={[field.name, 'debt']} hidden><Input /></Form.Item><Form.Item name={[field.name, 'debtVat']} hidden><Input /></Form.Item></Flex>)}
+      <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-documents"><FolderOpenOutlined /></span><div><Text strong>Sənədlə əlaqə</Text><Text type="secondary" className="bank-form-section-description">Ödənişi müqavilə və hesab-fakturaya bağlayın.</Text></div></Flex>}>
+        {fields.slice(0, 1).map((field) => <Row key={field.key} gutter={[12, 12]} align="middle">
+          <Col xs={24} sm={8}>{contractField(field.name, 'Müqavilə')}</Col>
+          <Col xs={24} sm={8}>{annexField(field.name, 'Əlavə')}</Col>
+          <Col xs={24} sm={8}>{invoiceField(field.name, 'Hesab-faktura')}</Col>
+          <Col xs={24} sm={12}>{documentBalance('Sənəd üzrə borc', firstDebt, firstDebtVat, 'debt')}</Col>
+          <Col xs={24} sm={12}>{documentBalance('Ödənişdən sonra qalıq', remainingPrincipal, remainingVat, 'remaining')}</Col>
+        </Row>)}
+      </Card>
+      <Flex ref={switchRef} className="payment-distribution-mode" vertical gap={4}>
+        <Space wrap>
+          <Text strong>Bir neçə sənəd üzrə bölüşdür</Text>
+          <Switch aria-label="Bir neçə sənəd üzrə bölüşdür" aria-controls="counterparty-distribution-panel" checked={multiple} disabled={multiple && fields.length > 1} onChange={(checked) => {
+            if (!checked && panelRef.current?.contains(document.activeElement)) switchRef.current?.querySelector('button')?.focus()
+            form.setFieldValue('multipleDocuments', checked)
+          }} />
+          <Tooltip title="Ödənişi bir və ya bir neçə müqavilə və hesab-faktura arasında bölüşdürün."><QuestionCircleOutlined /></Tooltip>
+        </Space>
+        <Text type="secondary">{multiple && fields.length > 1 ? 'Tək sənədə qayıtmaq üçün əlavə sətirləri silin.' : multiple ? 'Ödəniş bir neçə hesab-faktura arasında bölüşdürülür.' : 'Ödəniş yalnız bir müqavilə və hesab-fakturaya bağlanır.'}</Text>
+      </Flex>
+      {!multiple && summary}
+      <DistributionPanel open={multiple} panelRef={panelRef}>
+      <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-documents"><FolderOpenOutlined /></span><div><Text strong>Ödəniş bölgüsü</Text><Text type="secondary" className="bank-form-section-description">Ödənişi bir və ya bir neçə hesab-fakturaya bölüşdürün.</Text></div></Flex>}>
+        <Flex vertical gap={16}>
+          <Table<FormListFieldData> size="small" className="bank-distribution-table counterparty-distribution-table" rowKey="key" bordered pagination={false} scroll={{ x: 1340 }} dataSource={fields} columns={[
+            { title: 'Müqavilə', width: 170, render: (_, field) => contractField(field.name, undefined, field.name === 0 || !multiple) },
+            { title: 'Əlavə', width: 130, render: (_, field) => annexField(field.name, undefined, field.name === 0 || !multiple) },
+            { title: 'Hesab-faktura', width: 190, render: (_, field) => invoiceField(field.name, undefined, field.name === 0 || !multiple) },
+            { title: 'Borc', className: 'distribution-column-debt distribution-group-start', children: [
+              { title: 'Əsas məbləğ', className: 'distribution-column-debt distribution-group-start', width: 110, align: 'right' as const, render: (_, field) => money(Number(rows[field.name]?.debt ?? 0)) },
+              { title: 'ƏDV', className: 'distribution-column-debt', width: 100, align: 'right' as const, render: (_, field) => money(Number(rows[field.name]?.debtVat ?? 0)) },
+            ] },
+            { title: 'Ödəniş', className: 'distribution-column-payment distribution-group-start', children: [
+              { title: 'Əsas məbləğ', className: 'distribution-column-payment distribution-group-start', width: 140, render: (_, field) => paymentField(field.name, 'payment') },
+              { title: 'ƏDV', className: 'distribution-column-payment', width: 130, render: (_, field) => paymentField(field.name, 'vatPayment') },
+            ] },
+            { title: 'Qalıq borc', className: 'distribution-column-remaining distribution-group-start', children: [
+              { title: 'Əsas məbləğ', className: 'distribution-column-remaining distribution-group-start', width: 110, align: 'right' as const, render: (_, field) => money(Math.max(0, Number(rows[field.name]?.debt ?? 0) - Number(rows[field.name]?.payment ?? 0))) },
+              { title: 'ƏDV', className: 'distribution-column-remaining', width: 100, align: 'right' as const, render: (_, field) => money(Math.max(0, Number(rows[field.name]?.debtVat ?? 0) - Number(rows[field.name]?.vatPayment ?? 0))) },
+            ] },
+            { title: '', width: 48, render: (_, field) => <Popconfirm title="Bölgü sətri silinsin?" okText="Sil" cancelText="Ləğv et" onConfirm={() => remove(field.name)}><Tooltip title={fields.length === 1 ? 'Ən azı bir sənəd saxlanmalıdır' : 'Sətri sil'}><Button type="text" danger disabled={fields.length === 1} icon={<DeleteOutlined />} aria-label={`${field.name + 1}-ci bölgü sətrini sil`} /></Tooltip></Popconfirm> },
+          ]} />
+          <Flex><Button icon={<PlusOutlined />} aria-label="Sətir əlavə et" onClick={() => add({ payment: 0, vatPayment: 0 })}>Sətir əlavə et</Button></Flex>
+          <Form.ErrorList errors={errors} />
+          {(distributedPrincipal > principal || distributedVat > vat) && <Alert showIcon type="error" title="Bölüşdürülən əsas məbləğ və ya ƏDV ödəniş məbləğini keçir." />}
+          {summary}
+        </Flex>
+      </Card>
+      </DistributionPanel>
+    </Flex>}
+  </Form.List>
+  </Flex>
+}
+
+function SavedCounterpartyPayment({ values, currency }: { values: PaymentFormValues; currency: string }) {
+  const rows = values.distributionRows ?? []
+  const distributedPrincipal = rows.reduce((sum, row) => sum + Number(row.payment ?? 0), 0)
+  const distributedVat = rows.reduce((sum, row) => sum + Number(row.vatPayment ?? 0), 0)
+  const money = (value: number | undefined) => `${Number(value ?? 0).toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+  const columns: ColumnsType<DistributionRowForm> = [
+    { title: 'Müqavilə', dataIndex: 'contract', render: (value: string) => inboundContracts.find((item) => item.value === value)?.label ?? value },
+    { title: 'Əlavə', dataIndex: 'annex', render: (value: string | undefined) => value === 'annex-001' ? 'ƏL-001' : value === 'annex-002' ? 'ƏL-002' : '—' },
+    { title: 'Hesab-faktura', dataIndex: 'invoice', render: (value: string) => inboundInvoices.find((item) => item.value === value)?.label ?? value },
+    { title: 'Əsas ödəniş', dataIndex: 'payment', render: money },
+    { title: 'ƏDV ödənişi', dataIndex: 'vatPayment', render: money },
+  ]
+  return <Flex className="saved-counterparty-payment" vertical gap={16}>
+    <Text strong>{values.vatIncluded === false ? 'ƏDV məbləğdən xaricdir' : 'ƏDV məbləğə daxildir'}</Text>
+    <PaymentSummary principal={Number(values.netAmount ?? 0)} vat={Number(values.vatAmount ?? 0)} distributedPrincipal={roundPayment(distributedPrincipal)} distributedVat={roundPayment(distributedVat)} currency={currency} />
+    <Table<DistributionRowForm> rowKey={(row) => row.invoice ?? ''} size="small" pagination={false} scroll={{ x: 760 }} columns={columns} dataSource={rows} />
+    {Boolean(values.attachments?.length) && <Space wrap>{values.attachments?.map((file) => <Tag key={file.uid} icon={<PaperClipOutlined />}>{file.name}</Tag>)}</Space>}
+  </Flex>
+}
 
 function InboundPaymentForm({ form, type }: { form: FormInstance<PaymentFormValues>; type: 'counterparty' | 'supplierRefund' | 'other' }) {
   const isSupplierRefund = type === 'supplierRefund'
   const isOther = type === 'other'
+  const isCounterparty = type === 'counterparty'
   const partyLabel = isSupplierRefund ? 'Təchizatçı' : isOther ? 'Ödəyici / Mənbə' : 'Ödəyici'
   const partyOptions = isSupplierRefund ? supplierRefundPayers : isOther ? [...inboundPayers, { value: 'Kapital Bank ASC', label: 'Kapital Bank ASC', tin: '9900003611' }, { value: 'PAŞA Bank ASC', label: 'PAŞA Bank ASC', tin: '1500394551' }] : inboundPayers
   const [selectedDistributionRows, setSelectedDistributionRows] = useState<boolean[]>(() => initialDistributionRows(type).map((row) => row.selected !== false))
@@ -406,14 +670,17 @@ function InboundPaymentForm({ form, type }: { form: FormInstance<PaymentFormValu
   const watchedCurrency = Form.useWatch('currency', form)
   const selectedAccount = inboundAccounts.find((item) => item.value === recipientAccount)
   const recipientBank = selectedAccount?.bank ?? watchedRecipientBank
-  const currency = selectedAccount?.currency ?? watchedCurrency
+  const currency = watchedCurrency ?? selectedAccount?.currency
   const amount = Number(Form.useWatch('amountInCurrency', form) ?? 0)
   const exchangeRate = Number(Form.useWatch('rate', form) ?? 1)
   const vatRate = Number(Form.useWatch('vatRate', form) ?? 0)
+  const vatIncluded = Form.useWatch('vatIncluded', form) ?? true
   const rows = Form.useWatch('distributionRows', { form, preserve: true }) ?? []
   const isForeignCurrency = Boolean(currency && currency !== 'AZN')
-  const baseAmount = isForeignCurrency ? amount * exchangeRate : amount
-  const vatAmount = Math.round(amount * vatRate / (100 + vatRate) * 100) / 100
+  const vatAmount = roundPayment(amount * vatRate / (isCounterparty && !vatIncluded ? 100 : 100 + vatRate))
+  const netAmount = isCounterparty && !vatIncluded ? amount : roundPayment(amount - vatAmount)
+  const totalAmount = isCounterparty && !vatIncluded ? roundPayment(amount + vatAmount) : amount
+  const baseAmount = roundPayment(totalAmount * (isForeignCurrency ? exchangeRate : 1))
   const distributedAmount = rows.reduce((sum, row) => sum + Number(row?.payment ?? 0), 0)
   const advancePayment = Math.max(amount - distributedAmount, 0)
 
@@ -441,11 +708,10 @@ function InboundPaymentForm({ form, type }: { form: FormInstance<PaymentFormValu
   }, [baseAmount, form])
 
   useEffect(() => {
-    form.setFieldValue('vatAmount', vatAmount)
-  }, [form, vatAmount])
+    form.setFieldsValue({ vatAmount, ...(isCounterparty ? { netAmount, totalAmount } : {}) })
+  }, [form, isCounterparty, netAmount, totalAmount, vatAmount])
 
-  const contractOptions = inboundContracts.filter((contract) => !payer || contract.payer === payer)
-  const fieldLayout = { xs: 24, sm: 12, lg: 8 }
+  const fieldLayout = { xs: 24, sm: 12, lg: isCounterparty ? 6 : 8 }
   const automaticallyDistribute = () => {
     let remaining = amount
     form.setFieldValue('distributionRows', rows.map((row, index) => {
@@ -456,51 +722,68 @@ function InboundPaymentForm({ form, type }: { form: FormInstance<PaymentFormValu
     }))
   }
 
-  return <Flex vertical gap={16}>
-    {(['sequenceNumber', 'recipientBank', 'currency', 'rate', 'amount', 'vatAmount'] as const).map((name) => <Form.Item key={name} name={name} hidden><Input /></Form.Item>)}
-    <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-payment"><CreditCardOutlined /></span><div><Text strong>{isOther ? 'Əsas məlumatlar' : 'Ödəniş və bank məlumatları'}</Text><Text type="secondary" className="bank-form-section-description">{isSupplierRefund ? 'Ödənişin əsas məlumatlarını daxil edin.' : 'Ödəyici, hesab və məbləğ məlumatlarını daxil edin.'}</Text></div></Flex>}>
-      <Row gutter={16}>
-        <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Sənəd nömrəsi" value={sequenceNumber} icon={<ProfileOutlined />} /></Col>
-        <Col {...fieldLayout} lg={isOther ? 6 : 8}><Form.Item name="date" label="Tarix" rules={[{ required: true, message: 'Tarix daxil edilməlidir' }]}><Input type="date" className="full-width" /></Form.Item></Col>
-        {isOther && <Col xs={24} lg={12}><Form.Item name="paymentType" label="Daxilolmanın növü" rules={[{ required: true, message: 'Daxilolmanın növü seçilməlidir' }]}><Select placeholder="Növü seçin" options={otherReceiptTypeOptions} /></Form.Item></Col>}
-        <Col {...fieldLayout}><Form.Item name="payer" label={partyLabel} rules={[{ required: true, message: `${partyLabel} seçilməlidir` }]}><Select allowClear={isOther} showSearch optionFilterProp="label" placeholder={`${partyLabel} seçin`} options={partyOptions} onChange={(value) => { const nextRows = initialDistributionRows(type, refundType); setSelectedDistributionRows(nextRows.map((row) => row.selected !== false)); form.setFieldsValue({ payerTin: partyOptions.find((item) => item.value === value)?.tin, distributionRows: nextRows }) }} /></Form.Item></Col>
-        {!isOther && <Col {...fieldLayout}><Form.Item name="payerTin" label={`${partyLabel}ın VÖEN-i`}><AutoComplete className="full-width" options={partyOptions.map((item) => ({ value: item.tin, label: `${item.tin} · ${item.label}` }))} placeholder="VÖEN seçin və ya daxil edin" onSelect={(value) => { const selected = partyOptions.find((item) => item.tin === value); if (selected) form.setFieldsValue({ payer: selected.value }) }} /></Form.Item></Col>}
-        {isSupplierRefund && <Col {...fieldLayout}><Form.Item name="paymentType" label="Geri ödənişin növü" rules={[{ required: true, message: 'Geri ödənişin növü seçilməlidir' }]}><Select placeholder="Növü seçin" options={refundTypeOptions} classNames={{ popup: { root: 'bank-refund-type-popup' } }} onChange={(value) => { const nextRows = initialDistributionRows(type, value); setSelectedDistributionRows(nextRows.map((row) => row.selected !== false)); form.setFieldValue('distributionRows', nextRows) }} /></Form.Item></Col>}
-        <Col {...fieldLayout} lg={isOther ? 10 : 8}><Form.Item name="recipientAccount" label="Alıcının hesabı" rules={[{ required: true, message: 'Alıcının hesabı seçilməlidir' }]}><Select showSearch optionFilterProp="label" placeholder="Hesab seçin" options={inboundAccounts} onChange={(value) => { const account = inboundAccounts.find((item) => item.value === value); if (account) form.setFieldsValue({ recipientBank: account.bank, currency: account.currency, rate: exchangeRatesByCurrency[account.currency] ?? 1 }) }} /></Form.Item></Col>
-        <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Alıcının bankı" value={recipientBank} icon={<BankOutlined />} /></Col>
-        <Col {...fieldLayout} lg={isOther ? 6 : 8}><Form.Item name="amountInCurrency" label="Məbləğ" rules={[{ required: true, message: 'Məbləğ daxil edilməlidir' }, { type: 'number', min: 0.01, message: 'Məbləğ sıfırdan böyük olmalıdır' }]}><InputNumber className="full-width" min={0} precision={2} placeholder="0.00" /></Form.Item></Col>
-        <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Valyuta" value={currency} icon={<GlobalOutlined />} /></Col>
-        {isForeignCurrency && <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Məzənnə" value={exchangeRate.toFixed(4)} icon={<SwapOutlined />} /></Col>}
-        {(isOther || isSupplierRefund || isForeignCurrency) && <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Məbləğ AZN" value={`${baseAmount.toLocaleString('az-AZ', { minimumFractionDigits: 2 })} AZN`} icon={<DollarOutlined />} /></Col>}
-      </Row>
-      <Row gutter={16}>
+  const vatRow = <Row gutter={16}>
         <Col xs={24} sm={12} lg={6}><Form.Item name="vatRate" label="ƏDV dərəcəsi"><Select allowClear placeholder="ƏDV seçin" options={[{ value: 18, label: '18%' }, { value: 0, label: '0%' }]} /></Form.Item></Col>
         <Col xs={24} sm={12} lg={6}><ReadOnlyData label="ƏDV məbləği" value={`${vatAmount.toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}`} icon={<DollarOutlined />} /></Col>
       </Row>
+
+  const totalCol = isForeignCurrency ? 6 : 8
+  const counterpartyAmountCard = <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-payment"><DollarOutlined /></span><div><Text strong>Məbləğ və ƏDV</Text><Text type="secondary" className="bank-form-section-description">Ödəniş məbləğini, valyutanı və ƏDV hesablamasını təyin edin.</Text></div></Flex>}>
+    <Row gutter={16}>
+      <Col xs={24} sm={12} lg={6}><Form.Item name="amountInCurrency" label="Məbləğ" rules={[{ required: true, message: 'Məbləğ daxil edilməlidir' }, { type: 'number', min: 0.01, message: 'Məbləğ sıfırdan böyük olmalıdır' }]}><InputNumber className="full-width" min={0} precision={2} placeholder="0.00" /></Form.Item></Col>
+      <Col xs={24} sm={12} lg={6}><Form.Item name="currency" label="Valyuta" rules={[{ required: true, message: 'Valyuta seçilməlidir' }]}><Radio.Group aria-label="Valyuta" className="payment-currency-radio" buttonStyle="solid" onChange={(event) => { const value: string = event.target.value; form.setFieldValue('rate', exchangeRatesByCurrency[value] ?? 1) }}>{currencyOptions.map((option) => <Radio.Button key={option.value} value={option.value} title={option.label}>{option.value}</Radio.Button>)}</Radio.Group></Form.Item></Col>
+      <Col xs={24} sm={12} lg={6}><Form.Item name="vatRate" label="ƏDV dərəcəsi"><Select allowClear placeholder="ƏDV seçin" options={[{ value: 18, label: '18%' }, { value: 0, label: '0%' }]} /></Form.Item></Col>
+      <Col xs={24} sm={12} lg={6}>
+        <Form.Item label="ƏDV məbləğə daxildir" tooltip="Açıq olduqda ƏDV məbləğin içində hesablanır, bağlı olduqda məbləğə əlavə olunur.">
+          <Flex align="center" className="payment-switch-field"><Form.Item name="vatIncluded" valuePropName="checked" initialValue={true} noStyle><Switch aria-label="ƏDV məbləğə daxildir" /></Form.Item></Flex>
+        </Form.Item>
+      </Col>
+      {isForeignCurrency && <Col xs={24} sm={12} lg={6}><ReadOnlyData label="Məzənnə" value={exchangeRate.toFixed(4)} icon={<SwapOutlined />} /></Col>}
+    </Row>
+    <Row gutter={[12, 12]} className="payment-totals" aria-live="polite">
+      <Col xs={24} sm={12} md={totalCol}><Card size="small" className="payment-total-card"><Statistic title="ƏDV məbləği" value={vatAmount} precision={2} suffix={currency ?? ''} /></Card></Col>
+      <Col xs={24} sm={12} md={totalCol}><Card size="small" className="payment-total-card"><Statistic title="Əsas məbləğ (ƏDV xaric)" value={netAmount} precision={2} suffix={currency ?? ''} /></Card></Col>
+      <Col xs={24} sm={12} md={totalCol}><Card size="small" className="payment-total-card payment-total-card-primary"><Statistic title="Ümumi məbləğ (ƏDV daxil)" value={totalAmount} precision={2} suffix={currency ?? ''} /></Card></Col>
+      {isForeignCurrency && <Col xs={24} sm={12} md={totalCol}><Card size="small" className="payment-total-card"><Statistic title="Məbləğ AZN" value={baseAmount} precision={2} suffix="AZN" /></Card></Col>}
+    </Row>
+  </Card>
+
+  return <Flex vertical gap={16} className={isCounterparty ? 'counterparty-payment-form' : undefined}>
+    {(['sequenceNumber', 'recipientBank', 'currency', 'rate', 'amount', 'vatAmount', 'netAmount', 'totalAmount'] as const).filter((name) => !isCounterparty || name !== 'currency').map((name) => <Form.Item key={name} name={name} hidden><Input /></Form.Item>)}
+    <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-payment"><CreditCardOutlined /></span><div><Text strong>{isOther ? 'Əsas məlumatlar' : isCounterparty ? 'Ödəniş məlumatları' : 'Ödəniş və bank məlumatları'}</Text><Text type="secondary" className="bank-form-section-description">{isCounterparty ? 'Ödəyici və hesab məlumatlarını daxil edin.' : isSupplierRefund ? 'Ödənişin əsas məlumatlarını daxil edin.' : 'Ödəyici, hesab və məbləğ məlumatlarını daxil edin.'}</Text></div></Flex>}>
+      <Row gutter={16}>
+        <Col {...fieldLayout} lg={isOther || isCounterparty ? 6 : 8}><ReadOnlyData label="Sənəd nömrəsi" value={sequenceNumber} icon={<ProfileOutlined />} /></Col>
+        <Col {...fieldLayout} lg={isOther || isCounterparty ? 6 : 8}><Form.Item name="date" label="Tarix" rules={[{ required: true, message: 'Tarix daxil edilməlidir' }]}><Input type="date" className="full-width" /></Form.Item></Col>
+        {isOther && <Col xs={24} lg={12}><Form.Item name="paymentType" label="Daxilolmanın növü" rules={[{ required: true, message: 'Daxilolmanın növü seçilməlidir' }]}><Select placeholder="Növü seçin" options={otherReceiptTypeOptions} /></Form.Item></Col>}
+        <Col {...fieldLayout}><Form.Item name="payer" label={partyLabel} rules={[{ required: true, message: `${partyLabel} seçilməlidir` }]}><Select allowClear={isOther} showSearch optionFilterProp="label" placeholder={`${partyLabel} seçin`} options={partyOptions} onChange={(value) => { const nextRows = initialDistributionRows(type, refundType); setSelectedDistributionRows(nextRows.map((row) => row.selected !== false)); form.setFieldsValue({ payerTin: partyOptions.find((item) => item.value === value)?.tin, distributionRows: nextRows }) }} /></Form.Item></Col>
+        {isCounterparty ? <Col {...fieldLayout}><Form.Item name="payerTin" hidden><Input /></Form.Item><ReadOnlyData label="Ödəyicinin VÖEN-i" value={partyOptions.find((item) => item.value === payer)?.tin} icon={<IdcardOutlined />} /></Col> : !isOther && <Col {...fieldLayout}><Form.Item name="payerTin" label={`${partyLabel}ın VÖEN-i`}><AutoComplete className="full-width" options={partyOptions.map((item) => ({ value: item.tin, label: `${item.tin} · ${item.label}` }))} placeholder="VÖEN seçin və ya daxil edin" onSelect={(value) => { const selected = partyOptions.find((item) => item.tin === value); if (selected) form.setFieldsValue({ payer: selected.value }) }} /></Form.Item></Col>}
+        {isSupplierRefund && <Col {...fieldLayout}><Form.Item name="paymentType" label="Geri ödənişin növü" rules={[{ required: true, message: 'Geri ödənişin növü seçilməlidir' }]}><Select placeholder="Növü seçin" options={refundTypeOptions} classNames={{ popup: { root: 'bank-refund-type-popup' } }} onChange={(value) => { const nextRows = initialDistributionRows(type, value); setSelectedDistributionRows(nextRows.map((row) => row.selected !== false)); form.setFieldValue('distributionRows', nextRows) }} /></Form.Item></Col>}
+        <Col {...fieldLayout} lg={isOther ? 10 : isCounterparty ? 12 : 8}><Form.Item name="recipientAccount" label="Alıcının hesabı" rules={[{ required: true, message: 'Alıcının hesabı seçilməlidir' }]}><Select showSearch optionFilterProp="label" placeholder="Hesab seçin" options={inboundAccounts} onChange={(value) => { const account = inboundAccounts.find((item) => item.value === value); if (account) form.setFieldsValue({ recipientBank: account.bank, currency: account.currency, rate: exchangeRatesByCurrency[account.currency] ?? 1, ...(isCounterparty && currency !== account.currency ? { distributionRows: initialDistributionRows(type) } : {}) }) }} /></Form.Item></Col>
+        <Col {...fieldLayout} lg={isOther ? 4 : isCounterparty ? 12 : 8}><ReadOnlyData label="Alıcının bankı" value={recipientBank} icon={<BankOutlined />} /></Col>
+        {!isCounterparty && <Col {...fieldLayout} lg={isOther ? 4 : 8}><Form.Item name="amountInCurrency" label="Məbləğ" rules={[{ required: true, message: 'Məbləğ daxil edilməlidir' }, { type: 'number', min: 0.01, message: 'Məbləğ sıfırdan böyük olmalıdır' }]}><InputNumber className="full-width" min={0} precision={2} placeholder="0.00" /></Form.Item></Col>}
+        {!isCounterparty && <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Valyuta" value={currency} icon={<GlobalOutlined />} /></Col>}
+        {!isCounterparty && isForeignCurrency && <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Məzənnə" value={exchangeRate.toFixed(4)} icon={<SwapOutlined />} /></Col>}
+        {!isCounterparty && (isOther || isSupplierRefund || isForeignCurrency) && <Col {...fieldLayout} lg={isOther ? 6 : 8}><ReadOnlyData label="Məbləğ AZN" value={`${baseAmount.toLocaleString('az-AZ', { minimumFractionDigits: 2 })} AZN`} icon={<DollarOutlined />} /></Col>}
+      </Row>
+      {!isCounterparty && vatRow}
     </Card>
 
-    {!isOther && <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-documents"><FolderOpenOutlined /></span><div><Text strong>{isSupplierRefund ? 'Geri ödəniş bölgüsü' : 'Ödəniş bölgüsü'}</Text><Text type="secondary" className="bank-form-section-description">{isSupplierRefund ? 'Seçilən təchizatçı üzrə açıq ödənişlərdən geri ödənişi bölüşdürün.' : 'Ödənişi bir və ya bir neçə hesab-fakturaya bölüşdürün.'}</Text></div></Flex>} extra={isSupplierRefund ? <Flex className="bank-distribution-actions" align="center" gap={12}><Alert className="bank-distribution-info" type="info" showIcon title="Yalnız açıq qalığı olan ödənişlər göstərilir." /><Button className="bank-auto-distribution-button" icon={<SwapOutlined />} onClick={automaticallyDistribute}>Avtomatik bölüşdür</Button></Flex> : undefined}>
-      {!isSupplierRefund && <Alert className="bank-distribution-alert" type={distributedAmount > amount ? 'error' : 'info'} showIcon title={distributedAmount > amount ? 'Bölüşdürülən məbləğ ümumi ödənişdən çox ola bilməz.' : 'Bölüşdürülməyən məbləğ avtomatik olaraq avans ödənişi kimi saxlanılır.'} />}
+    {isCounterparty && counterpartyAmountCard}
+
+    {isCounterparty && <CounterpartyDocuments form={form} payer={payer} currency={currency ?? 'AZN'} principal={netAmount} vat={vatAmount} />}
+
+    {isSupplierRefund && <Card className="bank-form-section" title={<Flex align="center" gap={10}><span className="bank-form-section-icon bank-form-section-icon-documents"><FolderOpenOutlined /></span><div><Text strong>{isSupplierRefund ? 'Geri ödəniş bölgüsü' : 'Ödəniş bölgüsü'}</Text><Text type="secondary" className="bank-form-section-description">{isSupplierRefund ? 'Seçilən təchizatçı üzrə açıq ödənişlərdən geri ödənişi bölüşdürün.' : 'Ödənişi bir və ya bir neçə hesab-fakturaya bölüşdürün.'}</Text></div></Flex>} extra={isSupplierRefund ? <Flex className="bank-distribution-actions" align="center" gap={12}><Alert className="bank-distribution-info" type="info" showIcon title="Yalnız açıq qalığı olan ödənişlər göstərilir." /><Button className="bank-auto-distribution-button" icon={<SwapOutlined />} onClick={automaticallyDistribute}>Avtomatik bölüşdür</Button></Flex> : undefined}>
       <Form.List name="distributionRows" rules={[{ validator: async (_, value: DistributionRowForm[] | undefined) => { if (!value?.length) return Promise.reject(new Error('Ən azı bir müqavilə və ödəniş sətri əlavə edilməlidir')) } }]}> 
-        {(fields, { add, remove }, { errors }) => <>
-          <Table size="small" bordered className="bank-distribution-table" rowKey="key" pagination={false} tableLayout="fixed" scroll={{ x: isSupplierRefund ? 860 : 1020 }} dataSource={fields} columns={isSupplierRefund ? [
+        {(fields, _operations, { errors }) => <>
+          <Table size="small" bordered className="bank-distribution-table" rowKey="key" pagination={false} tableLayout="fixed" scroll={{ x: 860 }} dataSource={fields} columns={[
             { title: <Checkbox checked={fields.length > 0 && fields.every((field) => selectedDistributionRows[field.name] !== false)} indeterminate={fields.some((field) => selectedDistributionRows[field.name] !== false) && !fields.every((field) => selectedDistributionRows[field.name] !== false)} aria-label="Bütün açıq ödənişləri seç" onChange={(event) => { const selected = event.target.checked; const currentRows = form.getFieldValue('distributionRows') ?? []; setSelectedDistributionRows(fields.map(() => selected)); form.setFieldsValue({ distributionRows: currentRows.map((row: DistributionRowForm) => ({ ...row, selected })) }) }} />, width: 48, align: 'center' as const, render: (_, field) => { const selected = selectedDistributionRows[field.name] !== false; return <Checkbox checked={selected} aria-label="Açıq ödənişi seç" onChange={(event) => { const checked = event.target.checked; setSelectedDistributionRows((current) => current.map((value, index) => index === field.name ? checked : value)); form.setFieldValue(['distributionRows', field.name, 'selected'], checked) }} /> } },
             { title: refundType === 'goods-service-return' ? 'Geri qaytarılma sənədi' : 'İlkin ödəniş', width: 180, render: (_, field) => <Text strong className="bank-open-payment-number">{rows[field.name]?.invoice ?? '—'}</Text> },
             { title: 'Tarix', width: 120, render: (_, field) => <Text>{rows[field.name]?.date ?? '—'}</Text> },
             { title: 'Açıq məbləğ', width: 155, render: (_, field) => <DistributionValue value={Number(rows[field.name]?.debt ?? 0)} icon={<DollarOutlined />} /> },
             { title: 'Geri ödəniş', width: 155, render: (_, field) => <Form.Item name={[field.name, 'payment']} rules={[{ required: true, message: 'Məbləği daxil edin' }, { type: 'number', min: 0, message: 'Məbləğ mənfi ola bilməz' }, { validator: () => distributedAmount <= amount ? Promise.resolve() : Promise.reject(new Error('Ümumi məbləği keçə bilməz')) }]}><InputNumber size="large" className="full-width" min={0} precision={2} placeholder="0.00" /></Form.Item> },
             { title: 'Qalıq', width: 150, render: (_, field) => <DistributionValue value={Math.max(Number(rows[field.name]?.debt ?? 0) - Number(rows[field.name]?.payment ?? 0), 0)} icon={<WalletOutlined />} tone="success" /> },
-          ] : [
-            { title: 'Müqavilə', width: 180, render: (_, field) => <Form.Item name={[field.name, 'contract']} rules={[{ required: true, message: 'Seçin' }]}><Select size="large" showSearch optionFilterProp="label" placeholder="Müqavilə" options={contractOptions} onChange={() => form.setFieldValue(['distributionRows', field.name, 'invoice'], undefined)} /></Form.Item> },
-            { title: 'Əlavə', width: 150, render: (_, field) => <Form.Item name={[field.name, 'annex']}><Select size="large" allowClear placeholder="Əlavə" options={[{ value: 'annex-001', label: 'ƏL-001' }, { value: 'annex-002', label: 'ƏL-002' }]} /></Form.Item> },
-            { title: 'Hesab-faktura', width: 190, render: (_, field) => <Form.Item name={[field.name, 'invoice']} rules={[{ required: true, message: 'Seçin' }]}><Select size="large" showSearch optionFilterProp="label" placeholder="Hesab-faktura" options={inboundInvoices.filter((invoice) => !payer || contractOptions.some((contract) => contract.value === invoice.contract))} onChange={(value) => form.setFieldValue(['distributionRows', field.name, 'debt'], inboundInvoices.find((invoice) => invoice.value === value)?.debt ?? 0)} /></Form.Item> },
-            { title: 'Borc', width: 150, render: (_, field) => <DistributionValue value={Number(rows[field.name]?.debt ?? 0)} icon={<DollarOutlined />} /> },
-            { title: 'Ödəniş', width: 145, render: (_, field) => <Form.Item name={[field.name, 'payment']} rules={[{ required: true, message: 'Ödəniş daxil edilməlidir' }, { type: 'number', min: 0.01, message: 'Ödəniş sıfırdan böyük olmalıdır' }, { validator: () => distributedAmount <= amount ? Promise.resolve() : Promise.reject(new Error('Ümumi ödənişi keçə bilməz')) }]}><InputNumber size="large" className="full-width" min={0} precision={2} placeholder="0.00" /></Form.Item> },
-            { title: 'Qalıq borc', width: 150, render: (_, field) => { const row = rows[field.name]; return <DistributionValue value={Math.max(Number(row?.debt ?? 0) - Number(row?.payment ?? 0), 0)} icon={<WalletOutlined />} tone="success" /> } },
-            { title: '', width: 52, render: (_, field) => <Tooltip title="Sətri sil"><Button size="large" type="text" danger icon={<DeleteOutlined />} aria-label="Bölgü sətrini sil" onClick={() => remove(field.name)} /></Tooltip> },
           ]} />
           <Form.ErrorList errors={errors} />
-          {!isSupplierRefund && <Button className="bank-distribution-add" icon={<PlusOutlined />} onClick={() => add({})}>Bölgü sətri əlavə et</Button>}
         </>}
       </Form.List>
       <Row gutter={[12, 12]} className="bank-distribution-summary">
@@ -523,6 +806,7 @@ function InboundPaymentForm({ form, type }: { form: FormInstance<PaymentFormValu
         {!isOther && <Col xs={24} md={8}><Form.Item name="bankReference" label="Bank referansı / əməliyyat №"><Input placeholder="Əməliyyat nömrəsini daxil edin" /></Form.Item></Col>}
         <Col xs={24} md={isOther ? 24 : 8}><Form.Item name="purpose" label="Ödənişin təyinatı" rules={isOther ? undefined : [{ required: true, message: 'Ödənişin təyinatı daxil edilməlidir' }]}><Input placeholder="Ödənişin təyinatını daxil edin" /></Form.Item></Col>
         <Col span={24}><Form.Item name="note" label="Qeyd"><Input.TextArea rows={3} maxLength={500} showCount placeholder="Əlavə qeyd daxil edin" /></Form.Item></Col>
+        {isCounterparty && <Col span={24}><Form.Item name="attachments" label="Əlavə fayllar" valuePropName="fileList" getValueFromEvent={(event: { fileList: UploadFile[] }) => event.fileList}><Upload multiple beforeUpload={() => false} maxCount={5}><Button icon={<PaperClipOutlined />}>Fayl əlavə et</Button></Upload></Form.Item></Col>}
       </Row>
     </Card>
   </Flex>
@@ -796,11 +1080,11 @@ export function BankAccountsPage({ workspace }: { workspace: BankWorkspace }) {
                     if (action === 'import') inboundUploadRef.current?.click()
                   },
                   items: [
-                    { key: 'template', icon: <img className="excel-menu-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />, label: <div className="excel-menu-content"><strong>Excel şablonu yüklə</strong><span>İdxal üçün nümunə fayl</span></div> },
-                    { key: 'filtered', className: !hasActiveFilters ? 'excel-menu-item-disabled' : undefined, icon: <img className="excel-menu-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />, label: <Tooltip title="Filter tətbiq etdikdə, filterli excel export edə bilərsiniz. Klikləyərək filter tətbiq edin." open={!hasActiveFilters && filterExportTooltipOpen}><span className="excel-menu-tooltip-target" aria-disabled={!hasActiveFilters} onMouseEnter={() => setFilterExportTooltipOpen(true)} onMouseLeave={() => setFilterExportTooltipOpen(false)}><span className="excel-menu-content"><strong>Filterli yüklə</strong><span>{hasActiveFilters ? 'Tətbiq edilmiş filterlər üzrə' : 'Filter tətbiq olunur'}</span></span></span></Tooltip> },
-                    { key: 'import', icon: <img className="excel-menu-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />, label: <div className="excel-menu-content"><strong>Excel-dən idxal et</strong><span>Fayldan yeni məlumatları əlavə et</span></div> },
+                    { key: 'template', icon: <img className="excel-menu-logo" src={excelLogo} alt="" />, label: <div className="excel-menu-content"><strong>Excel şablonu yüklə</strong><span>İdxal üçün nümunə fayl</span></div> },
+                    { key: 'filtered', className: !hasActiveFilters ? 'excel-menu-item-disabled' : undefined, icon: <img className="excel-menu-logo" src={excelLogo} alt="" />, label: <Tooltip title="Filter tətbiq etdikdə, filterli excel export edə bilərsiniz. Klikləyərək filter tətbiq edin." open={!hasActiveFilters && filterExportTooltipOpen}><span className="excel-menu-tooltip-target" aria-disabled={!hasActiveFilters} onMouseEnter={() => setFilterExportTooltipOpen(true)} onMouseLeave={() => setFilterExportTooltipOpen(false)}><span className="excel-menu-content"><strong>Filterli yüklə</strong><span>{hasActiveFilters ? 'Tətbiq edilmiş filterlər üzrə' : 'Filter tətbiq olunur'}</span></span></span></Tooltip> },
+                    { key: 'import', icon: <img className="excel-menu-logo" src={excelLogo} alt="" />, label: <div className="excel-menu-content"><strong>Excel-dən idxal et</strong><span>Fayldan yeni məlumatları əlavə et</span></div> },
                   ],
-                }}><Button className="excel-export-button" icon={<img className="excel-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />}>Excel <DownOutlined /></Button></Dropdown>
+                }}><Button className="excel-export-button" icon={<img className="excel-logo" src={excelLogo} alt="" />}>Excel <DownOutlined /></Button></Dropdown>
                 <Tooltip title="Sütunları tənzimlə"><Button icon={<SettingOutlined />} aria-label="Cədvəl sütunlarını tənzimlə" onClick={() => setColumnSettingsOpen(true)} /></Tooltip>
                 <Upload accept=".xls,.csv,.tsv" showUploadList={false} beforeUpload={importInboundRecords}><button ref={inboundUploadRef} type="button" className="hidden-upload-trigger" tabIndex={-1} aria-hidden="true" /></Upload>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(paymentType)}>Yeni daxilolma</Button>
@@ -818,8 +1102,9 @@ export function BankAccountsPage({ workspace }: { workspace: BankWorkspace }) {
     </> : <Card className="bank-empty-workspace"><Table<InboundRecord> rowKey="id" size="middle" columns={tableColumns} dataSource={[]} scroll={{ x: 720 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`${workspaceTitles[workspace]} üzrə əməliyyat yoxdur`} /> }} pagination={{ pageSize: 5, showSizeChanger: true, showTotal: (total) => `Cəmi ${total} əməliyyat` }} /></Card>}
 
     <Drawer className="bank-payment-drawer" title={<Flex className="bank-drawer-heading" align="center" gap={12}><span className="drawer-title-icon"><DollarOutlined /></span><div><Title level={4}>{viewRecord ? viewedTemplate.title : selectedCreateType ? template.title : 'Yeni daxilolma'}</Title><Text type="secondary">{viewRecord ? 'Əməliyyat məlumatlarına baxış' : selectedCreateType ? 'Məlumatları bölmələr üzrə tamamlayın' : 'Əvvəl daxilolma əməliyyatının növünü seçin'}</Text></div></Flex>} placement="right" closable={{ placement: 'end' }} size="min(98vw, 1400px)" open={drawerOpen} onClose={() => setDrawerOpen(false)} footer={viewRecord ? <Flex justify="flex-end"><Button onClick={() => setDrawerOpen(false)}>Bağla</Button></Flex> : selectedCreateType ? <Flex justify="flex-end" gap={8} wrap><Button onClick={() => setDrawerOpen(false)}>Ləğv et</Button><Button onClick={() => { setSelectedCreateType(null); form.resetFields() }}>Geri</Button><Button type="primary" icon={<SaveOutlined />} loading={isSaving} onClick={savePayment}>Yadda saxla</Button></Flex> : null}>
-      {!viewRecord && !selectedCreateType && <Flex className="bank-operation-chooser" vertical gap={16}><Text strong>Daxilolma növünü seçin</Text><Row gutter={[16, 16]}>{inboundChooserTypes.map(({ key, label, description }) => <Col key={key} xs={24} sm={12} lg={8}><Card hoverable role="button" tabIndex={0} aria-label={label} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.click() } }} className={`bank-operation-option bank-operation-option-${key}`} onClick={() => { setPaymentType(key); setSelectedCreateType(key); form.resetFields(); form.setFieldsValue({ sequenceNumber: `IP-${new Date().getFullYear()}-${String(records.length + 1).padStart(6, '0')}`, date: new Date().toISOString().slice(0, 10), distributionRows: initialDistributionRows(key) }) }}><Flex gap={12} align="center"><span className="bank-operation-option-icon">{inboundTypeIcons[key]}</span><Flex vertical gap={2}><Text strong>{label}</Text><Text type="secondary">{description}</Text></Flex></Flex></Card></Col>)}</Row></Flex>}
+      {!viewRecord && !selectedCreateType && <Flex className="bank-operation-chooser" vertical gap={16}><Text strong>Daxilolma növünü seçin</Text><Row gutter={[16, 16]}>{inboundChooserTypes.map(({ key, label, description }) => <Col key={key} xs={24} sm={12} lg={8}><Card hoverable role="button" tabIndex={0} aria-label={label} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.click() } }} className={`bank-operation-option bank-operation-option-${key}`} onClick={() => { setPaymentType(key); setSelectedCreateType(key); form.resetFields(); form.setFieldsValue({ sequenceNumber: `IP-${new Date().getFullYear()}-${String(records.length + 1).padStart(6, '0')}`, date: new Date().toISOString().slice(0, 10), amountInCurrency: 0, currency: 'AZN', rate: 1, ...(key === 'counterparty' ? { vatRate: 18, vatIncluded: true } : {}), distributionRows: initialDistributionRows(key) }) }}><Flex gap={12} align="center"><span className="bank-operation-option-icon">{inboundTypeIcons[key]}</span><Flex vertical gap={2}><Text strong>{label}</Text><Text type="secondary">{description}</Text></Flex></Flex></Card></Col>)}</Row></Flex>}
       {!viewRecord && selectedCreateType && <Form className="bank-sectioned-form" form={form} layout="vertical" size="large" requiredMark="optional">{selectedCreateType === 'counterparty' || selectedCreateType === 'supplierRefund' || selectedCreateType === 'other' ? <InboundPaymentForm form={form} type={selectedCreateType} /> : <Flex vertical gap={16}>{createFormGroups.map((group) => <Card key={group.key} className="bank-form-section" title={<Flex align="center" gap={10}><span className={`bank-form-section-icon bank-form-section-icon-${group.key}`}>{group.icon}</span><div><Text strong>{group.title}</Text><Text type="secondary" className="bank-form-section-description">{group.description}</Text></div></Flex>}><Row gutter={16}>{group.fields.map((field) => <PaymentField key={field.name} field={field} />)}</Row></Card>)}</Flex>}</Form>}
+      {viewRecord?.type === 'counterparty' && viewRecord.values.netAmount !== undefined && <SavedCounterpartyPayment values={viewRecord.values} currency={viewRecord.currency} />}
       {viewRecord ? <Flex className="bank-record-details" vertical gap={16}><Card size="small" title={<span className="bank-detail-group-title bank-detail-group-title-info"><InfoCircleOutlined />Əməliyyat məlumatları</span>}><Descriptions column={1} size="small" items={[{ key: 'documentNumber', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-document"><FileTextOutlined /></span>Sənəd nömrəsi</span>, children: viewRecord.documentNumber }, { key: 'status', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-default"><AuditOutlined /></span>Status</span>, children: <Tag color={viewRecord.status === 'posted' ? 'success' : 'default'}>{viewRecord.status === 'posted' ? 'Keçirilib' : 'Qaralama'}</Tag> }, { key: 'createdAt', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-date"><CalendarOutlined /></span>Yaradılma tarixi</span>, children: viewRecord.createdAt }, { key: 'createdBy', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-person"><UserOutlined /></span>Yaradan</span>, children: viewRecord.createdBy }, { key: 'approval', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-default"><CheckCircleOutlined /></span>Təsdiq statusu</span>, children: <Tag color={viewRecord.approvalStatus === 'approved' ? 'success' : 'warning'}>{viewRecord.approvalStatus === 'approved' ? 'Təsdiqlənib' : 'Gözləyir'}</Tag> }, { key: 'costCenter', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-default"><AuditOutlined /></span>Xərc mərkəzi</span>, children: viewRecord.costCenter }, { key: 'project', label: <span className="bank-detail-label"><span className="bank-detail-label-icon bank-detail-label-icon-document"><ProjectOutlined /></span>Layihə</span>, children: viewRecord.project }]} /></Card>{detailGroups.map((group) => <Card key={group.key} size="small" title={<span className={`bank-detail-group-title bank-detail-group-title-${group.key}`}>{group.icon}{group.title}</span>}><Descriptions column={1} size="small" items={group.fields.map((field) => ({ key: field.name, label: detailLabel(field), children: detailValue(field, viewRecord) }))} /></Card>)}</Flex> : null}
     </Drawer>
     <Drawer title={<Space><SettingOutlined /><span>Cədvəl sütunları</span></Space>} placement="right" size="min(94vw, 390px)" open={columnSettingsOpen} onClose={() => setColumnSettingsOpen(false)} closable={{ placement: 'end' }} footer={<Flex justify="space-between"><Button onClick={() => { setVisibleColumnKeys(defaultColumnKeys); setColumnOrder(defaultColumnKeys); setFixedColumns({ type: 'left', view: 'right' }); setHasColumnVisibilityChanges(false) }}>Standarta qaytar</Button><Button type="primary" onClick={() => setColumnSettingsOpen(false)}>Hazırdır</Button></Flex>}>

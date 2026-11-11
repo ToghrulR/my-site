@@ -50,6 +50,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import type { UploadProps } from 'antd'
 import { CustomDataTable } from './components/CustomDataTable'
+import excelLogo from '../logo/Microsoft_Excel-Logo.wine.png'
 
 const { Text, Title } = Typography
 
@@ -713,7 +714,7 @@ export function CounterpartiesPage() {
   return (
     <>
       {contextHolder}
-      <Flex vertical gap={20}>
+      <Flex className="counterparty-page" vertical gap={20}>
         <Flex className="page-toolbar" justify="space-between" align="center" wrap gap={12}>
           <Input allowClear prefix={<SearchOutlined />} placeholder="Şirkət adı, VÖEN və ya əlaqədar şəxs üzrə axtarış..." value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1) }} className="counterparty-search" />
           <Space wrap>
@@ -728,13 +729,13 @@ export function CounterpartiesPage() {
                   if (key === 'import') counterpartyUploadRef.current?.click()
                 },
                 items: [
-                  { key: 'template', icon: <img className="excel-menu-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />, label: <div className="excel-menu-content"><strong>Excel şablonu yüklə</strong><span>İdxal üçün nümunə fayl</span></div> },
-                  { key: 'filtered', className: !hasActiveFilters ? 'excel-menu-item-disabled' : undefined, icon: <img className="excel-menu-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />, label: <Tooltip title="Filter tətbiq etdikdə, filterli excel export edə bilərsiniz. Klikləyərək filter tətbiq edin." open={!hasActiveFilters && filterExportTooltipOpen}><span className="excel-menu-tooltip-target" aria-disabled={!hasActiveFilters} onMouseEnter={() => setFilterExportTooltipOpen(true)} onMouseLeave={() => setFilterExportTooltipOpen(false)}><span className="excel-menu-content"><strong>Filterli yüklə</strong><span>{hasActiveFilters ? 'Tətbiq edilmiş filterlər üzrə' : 'Filter tətbiq olunur'}</span></span></span></Tooltip> },
-                  { key: 'import', icon: <img className="excel-menu-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />, label: <div className="excel-menu-content"><strong>Excel-dən idxal et</strong><span>Fayldan yeni məlumatları əlavə et</span></div> },
+                  { key: 'template', icon: <img className="excel-menu-logo" src={excelLogo} alt="" />, label: <div className="excel-menu-content"><strong>Excel şablonu yüklə</strong><span>İdxal üçün nümunə fayl</span></div> },
+                  { key: 'filtered', className: !hasActiveFilters ? 'excel-menu-item-disabled' : undefined, icon: <img className="excel-menu-logo" src={excelLogo} alt="" />, label: <Tooltip title="Filter tətbiq etdikdə, filterli excel export edə bilərsiniz. Klikləyərək filter tətbiq edin." open={!hasActiveFilters && filterExportTooltipOpen}><span className="excel-menu-tooltip-target" aria-disabled={!hasActiveFilters} onMouseEnter={() => setFilterExportTooltipOpen(true)} onMouseLeave={() => setFilterExportTooltipOpen(false)}><span className="excel-menu-content"><strong>Filterli yüklə</strong><span>{hasActiveFilters ? 'Tətbiq edilmiş filterlər üzrə' : 'Filter tətbiq olunur'}</span></span></span></Tooltip> },
+                  { key: 'import', icon: <img className="excel-menu-logo" src={excelLogo} alt="" />, label: <div className="excel-menu-content"><strong>Excel-dən idxal et</strong><span>Fayldan yeni məlumatları əlavə et</span></div> },
                 ],
               }}
             >
-              <Button className="excel-export-button" icon={<img className="excel-logo" src="/logo/Microsoft_Excel-Logo.wine.png" alt="" />}>Excel <DownOutlined /></Button>
+              <Button className="excel-export-button" icon={<img className="excel-logo" src={excelLogo} alt="" />}>Excel <DownOutlined /></Button>
             </Dropdown>
             <Tooltip title="Cədvəl sütunları"><Button icon={<SettingOutlined />} aria-label="Cədvəl sütunları" onClick={() => setTableSettingsOpen(true)} /></Tooltip>
             <Upload accept=".xls,.csv,.tsv" showUploadList={false} beforeUpload={importFromExcel}>

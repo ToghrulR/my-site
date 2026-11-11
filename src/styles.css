@@ -621,30 +621,15 @@ body {
 
 .bank-distribution-summary {
   margin-top: 20px;
-  margin-inline: 0 !important;
-  padding: 8px;
-  background: var(--ant-color-fill-quaternary);
-  border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 14px;
+}
+
+.bank-distribution-summary .ant-col {
+  display: flex;
 }
 
 .bank-distribution-summary-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: 12px;
-  min-height: 68px;
-  padding: 12px 14px;
-  border: 1px solid var(--ant-color-border-secondary);
-  border-radius: 12px;
-}
-
-.bank-distribution-summary-item-default {
-  background: var(--ant-color-info-bg);
-}
-
-.bank-distribution-summary-item-default .bank-distribution-summary-icon {
-  color: var(--ant-color-info);
+  flex: 1;
+  min-width: 0;
 }
 
 .bank-distribution-summary-icon {
@@ -655,41 +640,41 @@ body {
   width: 40px;
   height: 40px;
   color: var(--ant-color-primary);
-  background: var(--ant-color-bg-container);
-  border: 1px solid var(--ant-color-border-secondary);
+  background: var(--ant-color-primary-bg);
   border-radius: 10px;
   font-size: 18px;
 }
 
-.bank-distribution-summary-item .ant-flex {
-  min-width: 0;
-}
-
-.bank-distribution-summary-item .ant-typography:last-child {
-  font-size: 16px;
-  line-height: 24px;
-}
-
-.bank-distribution-summary-item-success {
-  background: var(--ant-color-success-bg);
-}
-
 .bank-distribution-summary-item-success .bank-distribution-summary-icon {
   color: var(--ant-color-success);
-}
-
-.bank-distribution-summary-item-warning {
-  background: var(--ant-color-warning-bg);
+  background: var(--ant-color-success-bg);
 }
 
 .bank-distribution-summary-item-warning .bank-distribution-summary-icon {
   color: var(--ant-color-warning);
+  background: var(--ant-color-warning-bg);
 }
 
-.bank-distribution-summary .ant-col {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.bank-distribution-summary-content {
+  min-width: 0;
+}
+
+.bank-distribution-summary-statistic .ant-statistic-content-value {
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.bank-distribution-summary-item-success .ant-statistic-content-value {
+  color: var(--ant-color-success);
+}
+
+.bank-distribution-summary-item-warning .ant-statistic-content-value {
+  color: var(--ant-color-warning);
+}
+
+.bank-distribution-summary-details {
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .bank-distribution-advance {
@@ -716,6 +701,194 @@ body {
   display: block;
   margin-top: 2px;
   font-size: 12px;
+}
+
+.payment-totals {
+  padding-top: 16px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+}
+
+.payment-distribution-mode {
+  padding-block: 8px;
+}
+
+.payment-distribution-mode > .ant-space {
+  min-width: 0;
+}
+
+.payment-distribution-mode .ant-switch {
+  flex-shrink: 0;
+}
+
+.counterparty-payment-form .payment-currency-radio {
+  display: flex;
+  width: 100%;
+}
+
+.counterparty-payment-form .payment-currency-radio .ant-radio-button-wrapper {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.payment-distribution-panel {
+  min-width: 0;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.payment-distribution-panel-content {
+  min-width: 0;
+}
+
+.bank-document-balance {
+  height: 100%;
+  border-color: var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+}
+
+.bank-form-section .bank-document-balance .ant-card-body {
+  padding: 16px;
+}
+
+.bank-document-balance-debt {
+  background: var(--ant-color-primary-bg);
+}
+
+.bank-document-balance-remaining {
+  background: var(--ant-color-success-bg);
+}
+
+.bank-document-balance-title {
+  display: block;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+
+.bank-document-balance .ant-col {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bank-document-balance .ant-flex {
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.counterparty-payment-form .bank-distribution-summary-item {
+  height: 100%;
+  background: var(--ant-color-fill-quaternary);
+  border-color: var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+}
+
+.counterparty-payment-form .bank-distribution-summary-item-default {
+  background: color-mix(in srgb, var(--ant-color-primary) 5%, var(--ant-color-bg-container));
+  border-color: color-mix(in srgb, var(--ant-color-primary) 18%, var(--ant-color-bg-container));
+}
+
+.counterparty-payment-form .bank-distribution-summary-item-success {
+  background: color-mix(in srgb, var(--ant-color-success) 5%, var(--ant-color-bg-container));
+  border-color: color-mix(in srgb, var(--ant-color-success) 18%, var(--ant-color-bg-container));
+}
+
+.counterparty-payment-form .bank-distribution-summary-item-warning {
+  background: color-mix(in srgb, var(--ant-color-warning) 5%, var(--ant-color-bg-container));
+  border-color: color-mix(in srgb, var(--ant-color-warning) 18%, var(--ant-color-bg-container));
+}
+
+.counterparty-payment-form .bank-distribution-summary-item .ant-card-body {
+  padding: 16px;
+}
+
+.counterparty-payment-form .bank-distribution-summary-content {
+  flex: 1;
+}
+
+.counterparty-payment-form .bank-distribution-summary-details {
+  gap: 4px;
+  margin-top: 8px;
+  font-size: var(--ant-font-size);
+  line-height: var(--ant-line-height);
+}
+
+.counterparty-payment-form .bank-distribution-summary-item .ant-statistic-content-value {
+  color: var(--ant-color-text);
+}
+
+.counterparty-payment-form .bank-distribution-summary-content {
+  overflow-wrap: anywhere;
+}
+
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-column-debt,
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-column-payment,
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-column-remaining {
+  background: var(--ant-color-fill-quaternary);
+}
+
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-column-debt {
+  background: color-mix(in srgb, var(--ant-color-info) 7%, var(--ant-color-bg-container));
+}
+
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-column-payment {
+  background: color-mix(in srgb, var(--ant-color-primary) 7%, var(--ant-color-bg-container));
+}
+
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-column-remaining {
+  background: color-mix(in srgb, var(--ant-color-success) 7%, var(--ant-color-bg-container));
+}
+
+.counterparty-distribution-table .ant-table-thead > tr > th.distribution-group-start,
+.counterparty-distribution-table .ant-table-tbody > tr > td.distribution-group-start {
+  border-inline-start: 1px solid var(--ant-color-border);
+}
+
+.counterparty-distribution-table .ant-table-thead > tr:first-child > th {
+  font-weight: var(--ant-font-weight-strong);
+}
+
+.payment-switch-field {
+  min-height: 40px;
+}
+
+.payment-total-card {
+  height: 100%;
+  background: var(--ant-color-fill-quaternary);
+  border-color: var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius-lg);
+}
+
+.counterparty-payment-form .payment-total-card .ant-card-body {
+  padding: 16px;
+}
+
+.counterparty-payment-form .payment-total-card .ant-statistic-content {
+  overflow-wrap: anywhere;
+}
+
+.payment-total-card .ant-statistic-content-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.payment-total-card .ant-statistic-content-suffix {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.payment-total-card-primary {
+  background: var(--ant-color-primary-bg);
+  border-color: var(--ant-color-primary-border);
+}
+
+.payment-total-card-primary .ant-statistic-content-value {
+  color: var(--ant-color-primary);
+}
+
+.saved-counterparty-payment {
+  margin-bottom: 16px;
 }
 
 @media (max-width: 900px) {
@@ -1530,8 +1703,42 @@ a {
   box-shadow: 0 4px 18px rgb(24 33 55 / 4%);
 }
 
+.counterparty-page {
+  width: 100%;
+  min-width: 0;
+}
+
+.counterparty-page .page-toolbar > .ant-space {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
 .counterparty-search {
   width: min(100%, 480px);
+}
+
+.counterparty-page .counterparty-data-table .ant-table-container {
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 12px;
+}
+
+.counterparty-page .counterparty-data-table .ant-table-thead > tr > th {
+  color: var(--ant-color-text-secondary);
+  background: var(--ant-color-bg-layout);
+  border-bottom-color: var(--ant-color-border-secondary);
+}
+
+.counterparty-page .counterparty-data-table .ant-table-tbody > tr > td {
+  height: 72px;
+  border-bottom-color: var(--ant-color-border-secondary);
+}
+
+.counterparty-page .counterparty-data-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+
+.counterparty-page .counterparty-data-table .ant-table-tbody > tr:hover > td {
+  background: var(--ant-color-primary-bg);
 }
 
 .counterparty-card {
@@ -2645,6 +2852,10 @@ a {
 
   .counterparty-search {
     width: 100%;
+  }
+
+  .counterparty-page .page-toolbar > .ant-space {
+    justify-content: flex-start;
   }
 
   .page-toolbar > .ant-space {
